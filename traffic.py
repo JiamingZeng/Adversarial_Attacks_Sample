@@ -6,101 +6,156 @@ import torchvision.transforms as transforms
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import csv
+from DISTS_pytorch import DISTS
 from swd import swd
 
+# Function to normalize the Image
+def normalize(img):
+    # define custom transform function
+    transform = transforms.Compose([
+        transforms.ToTensor()
+    ])
 
-# load the image
-# img_path = 'standard_stop.png'
-img_path = 'archive/Meta/14.png'
-img = Image.open(img_path).convert('RGB')
-img_test = Image.open('Archive/train/14/00014_00000_00000.png').convert('RGB')
+    # transform the image to get the original mean and std
+    img_tr = transform(img)
 
-# convert PIL image to numpy array
-img = img.resize((256, 256))
+    # calculate mean and std
+    mean, std = img_tr.mean([1,2]), img_tr.std([1,2])
 
-# define custom transform function
-transform = transforms.Compose([
-    transforms.ToTensor()
-])
+    # Define custom normalization function
+    transform_norm = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize(mean, std)
+    ])
 
-img_tr = transform(img)
+    # get normalized image
+    return transform_norm(img)
 
-# calculate mean and std
-mean, std = img_tr.mean([1,2]), img_tr.std([1,2])
+# function to resize and convert images to tensor
+def img_resize_to_np(img_path):
+    # convert to rgb
+    img = Image.open(img_path).convert('RGB')
 
-# Define custom normalization function
-transform_norm = transforms.Compose([
-    transforms.ToTensor(),
-    transforms.Normalize(mean, std)
-])
+    # resized Images
+    img = img.resize((256, 256))
 
-# get normalized image
-img_normalized = transform_norm(img)
+    # normalize
+    img_normalized = normalize(img)
 
-# convert normalized image to numpy
-# array
-img_np = np.array(img_normalized)
+    # convert normalized image to numpy
+    img_np = np.array(img_normalized)
+    img_np = img_np.reshape(3, 256, 256)
+    # return img_np.reshape(3, 256, 256)
 
-img_np = img_np.reshape(3, 256, 256)
+    # Create a larger sample_case
+    return np.expand_dims(img_np, axis = 0)
 
-# Resize the image
-img_test = img_test.resize((256, 256))
-img_test_np = np.array(img_test)
-img_test_np = img_test_np.reshape(3, 256, 256)
 
-# Create a larger sample_case
-img_large = np.expand_dims(img_np, axis = 0)
-# for i in range(52, 65):
-#     img2 = Image.open('traffic_sign_project/archive/images/road{}.png'.format(i)).convert('RGB')
-#     img2 = img2.resize((256, 256))
-#     img2_np = np.array(img2)
-#     img2_np = img2_np.reshape(3, 256, 256)
-#     np.append(img_large, img2_np)
-img_test_np = np.expand_dims(img_test_np, axis = 0)
-x = torch.tensor(img_large, dtype=torch.float)
-y = torch.tensor(img_test_np, dtype=torch.float)
+if __name__ == '__main__':
 
-out = swd(x, y)
-# print(x.size(), y.size())
-print("distance: {:.3f}".format(out))
+    # Read the data from the csv file
+    rows = []
+    with open('Datasets/GTSRB/Train.csv', 'r') as file:
+        csvreader = csv.reader(file)
+        header = next(csvreader)
+        for row in csvreader:
+            rows.append(row)
 
-# Record all the distances
-results = []
+    # Filter the rows to stop signs
+    stop_signs = filter(lambda c:int(c[6]) == 14, rows)
 
-for j in range(3):
-    for i in range(29):
-        img_test = Image.open('archive/Train/14/00014_000{:02d}_000{:02d}.png'.format(j, i)).convert('RGB')
+    # read test files
+    test_rows = []
+    with open('Datasets/GTSRB/Test.csv', 'r') as file:
+        csvreader = csv.reader(file)
+        header = next(csvreader)
+        for row in csvreader:
+            test_rows.append(row)
 
-        # Resize the image
-        img_test = img_test.resize((256, 256))
+    # filter the test stop sign
+    test_rows = [i + [int(i[7][5:10])] for i in test_rows]
+    # print(test_rows[:10])
+    stop_test_signs = filter(lambda c:int(c[6]) == 14, test_rows)
+    stop_test_id = []
+    for i in stop_test_signs:
+        stop_test_id.append(i[8])
+    # print(len(stop_test_id))
 
-        img_tr = transform(img_test)
+    # Get all the stop_signs from the training dataset
+    x = np.empty([0, 3, 256, 256])
+    count = 0
+    for stop_sign in stop_signs:
+        # limit the images to 50
+        count += 1
+        if count > 3:
+            break
+        img_path = 'Datasets/GTSRB/{}'.format(stop_sign[7])
+        x = np.append(x, img_resize_to_np(img_path), axis = 0)
 
-        # calculate mean and std
-        mean, std = img_tr.mean([1,2]), img_tr.std([1,2])
+    # conver tht stop_sign training np array to tensor for further calculation
+    x = torch.tensor(x, dtype=torch.float)
 
-        # Normalize the image
-        img_test_normalized = transform_norm(img_test)
-        img_test_np = np.array(img_test_normalized)
-        img_test_np = img_test_np.reshape(3, 256, 256)
+    # prepare the device
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = DISTS().to(device)
+    ref = x.to(device)
 
-        img_test_np = np.expand_dims(img_test_np, axis = 0)
-        y = torch.tensor(img_test_np, dtype=torch.float)
-        results.append((i, swd(x, y)))
+    results = []
 
-results.sort(key = lambda x:x[1])
-print(results)
-res_mean = np.percentile(results, 25)
-new_result = []
-num = 0
+    # loop through all the images we need to calculate compare to the selected stop_signs
+    for i in stop_test_id:
+        # print('Datasets/GTSRB/Test/00{:03d}.png'.format(i))
+        y = img_resize_to_np('Datasets/GTSRB/Test/{:05d}.png'.format(i))
+        y = torch.tensor(y, dtype=torch.float)
+        dist = y.to(device)
+        score = torch.mean(model(ref, dist))
+        results.append((i, score.item()))
+        print((i, score.item()))
 
-for id, result in enumerate(results):
-    f.write(id)
-    f.write(result)
-    if result < res_mean:
-        if id > 51 and id < 100:
-            num += 1
-        new_result.append(id)
+    # loop through the first 300 for comparing results
+    for i in range(300):
+        # print('Datasets/GTSRB/Test/00{:03d}.png'.format(i))
+        if i in stop_test_id:
+            continue
+        y = img_resize_to_np('Datasets/GTSRB/Test/{:05d}.png'.format(i))
+        y = torch.tensor(y, dtype=torch.float)
+        dist = y.to(device)
+        score = torch.mean(model(ref, dist))
+        results.append((i, score.item()))
+        print((i, score.item()))
 
-# with open("results.txt", "w") as f:
-#     f.write("Images remained: {} / 876, Stop sign remained: {} / 48".format(len(new_result), num))
+    # Sort and write the results to file
+    results.sort(key = lambda x:x[1])
+    with open("results.txt", "w") as f:
+        for result in results:
+            f.write(str(result[0]) + " " + str(result[1]) + "\n")
+
+    stop_count = 0
+    count = 0
+    for result in results:
+        count += 1
+        if count > 300:
+            break
+        if result[0] in stop_test_id:
+            stop_count += 1
+
+    with open("results.txt", "a") as f:
+        f.write("Stop signs include: {}/{}, Total include: {}/{}".format(stop_count, len(stop_test_id), 300, len(results)))
+
+
+
+    # # stop_signs = Image.open('Datasets/GTSRB/Train/20/00020_00000_00000.png').convert('RGB')
+    # # convert it into tensor
+    # # torch.tensor(img_large, dtype=torch.float)
+    # x = img_resize_to_np('Datasets/GTSRB/Train/20/00020_00000_00000.png')
+    # x = np.append(x, img_resize_to_np('Datasets/GTSRB/Train/20/00020_00000_00001.png'), axis = 0)
+    # x = np.append(x, img_resize_to_np('Datasets/GTSRB/Train/20/00020_00000_00000.png'), axis = 0)
+    # x = torch.tensor(x, dtype=torch.float)
+    #
+    # print(x.shape)
+    # # other = Image.open('Datasets/GTSRB/Train/20/00020_00000_00000.png').convert('RGB')
+    # y = img_resize_to_np('Datasets/GTSRB/Train/20/00020_00000_00001.png')
+    # # y = np.append(y, img_resize_to_np('Datasets/GTSRB/Train/20/00020_00000_00000.png'), axis = 0)
+    # y = torch.tensor(y, dtype=torch.float)
+    # print(D(x, y))
