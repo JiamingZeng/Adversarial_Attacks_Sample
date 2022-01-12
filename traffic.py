@@ -86,12 +86,15 @@ if __name__ == '__main__':
     x = np.empty([0, 3, 256, 256])
     count = 0
     for stop_sign in stop_signs:
-        # limit the images to 50
+        # limit the images to 3
         count += 1
         if count > 3:
             break
         img_path = 'Datasets/GTSRB/{}'.format(stop_sign[7])
         x = np.append(x, img_resize_to_np(img_path), axis = 0)
+    x = np.append(x, img_resize_to_np('Datasets/GTSRB/Train/14/00014_00001_00019.png'), axis = 0)
+    x = np.append(x, img_resize_to_np('Datasets/GTSRB/Train/14/00014_00002_00019.png'), axis = 0)
+    x = np.append(x, img_resize_to_np('Datasets/GTSRB/Train/14/00014_00003_00019.png'), axis = 0)
 
     # conver tht stop_sign training np array to tensor for further calculation
     x = torch.tensor(x, dtype=torch.float)
@@ -129,7 +132,10 @@ if __name__ == '__main__':
     results.sort(key = lambda x:x[1])
     with open("results.txt", "w") as f:
         for result in results:
-            f.write(str(result[0]) + " " + str(result[1]) + "\n")
+            if result[0] in stop_test_id:
+                f.write(str(result[0]) + " " + str(result[1]) + " stop" + "\n")
+            else:
+                f.write(str(result[0]) + " " + str(result[1]) + "\n")
 
     stop_count = 0
     count = 0
