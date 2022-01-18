@@ -52,9 +52,8 @@ def img_resize_to_np(img_path):
     # Create a larger sample_case
     return np.expand_dims(img_np, axis = 0)
 
-
-if __name__ == '__main__':
-
+# threshold calculation Function
+def calculate_threshold():
     root_dir = 'Datasets/GTSRB/Train'
     random.seed(10)
 
@@ -112,6 +111,94 @@ if __name__ == '__main__':
     with open("results.txt", "w") as f:
         for result in results:
             f.write(str(result[0]) + " " + str(result[1]) + " " + str(result[2]) + "\n")
+
+
+if __name__ == '__main__':
+    results = []
+
+    with open('results.txt') as f:
+        lines = f.readlines()
+        lines = [line.rstrip() for line in lines]
+        for line in lines:
+            results.append(line.split(' '))
+
+    # convert to tensor for further comparing
+    for line in results:
+        line[2] = torch.tensor(float(line[2]), dtype=torch.float)
+
+    images = dict()
+    with open('model_pictures.txt', 'r') as file:
+        lines = file.readlines()
+        for line in lines:
+            line = line.strip()
+            dir = line[21:23]
+            if dir[1] == '/':
+                dir = dir[0]
+            if dir not in images:
+                images[int(dir)] = [line]
+            else:
+                images[int(dir)].append(line)
+
+    test_rows = []
+    with open('Datasets/GTSRB/Test.csv', 'r') as file:
+        csvreader = csv.reader(file)
+        header = next(csvreader)
+        for row in csvreader:
+            test_rows.append(row)
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = DISTS().to(device)
+
+    accs = []
+    suitable = []
+    classified = []
+    for i in range(100):
+        acc = []
+        suit = []
+        fname = 'Datasets/GTSRB/Test/{:05d}.png'.format(i)
+        correct_class = test_rows[i][6]
+
+        for key in sorted(images):
+            x = np.empty([0, 3, 256, 256])
+
+            # for loop through the each class of sample images
+            for img_path in images[key]:
+                x = np.append(x, img_resize_to_np(img_path), axis = 0)
+            x = torch.tensor(x, dtype=torch.float)
+            ref = x.to(device)
+            y = img_resize_to_np(fname)
+            y = torch.tensor(y, dtype=torch.float)
+            dist = y.to(device)
+            score = torch.mean(model(ref, dist))
+
+            acc.append((i, key, score.item()))
+            print(acc[key])
+            if score < results[key][2]:
+                print(results[key], score)
+                suit.append(key)
+
+        min_score = list(min(acc, key = lambda x:x[2]))
+        min_score.append(correct_class)
+        classified.append(min_score)
+        print("This picture is classified as ", classified[i])
+        accs.append(acc)
+        suitable.append(suit)
+
+    with open('accuracy_result.txt', 'w') as file:
+        accuracy = 0
+        included = 0
+        for id, classify in enumerate(classified):
+            file.write("The estimated class for image " + str(classify[0]) + " is " + str(classify[1]) + \
+            ". The correct images class is " + str(classify[3]) + "\n")
+            if int(classify[1]) == int(classify[3]):
+                accuracy += 1
+            file.write("The class below threshold includes " + str(suitable[id]) + "\n")
+            if int(classify[3]) in suitable[id]:
+                included += 1
+        file.write("The accuracy for this sample is " + str(accuracy) + "/100.\n")
+        file.write("Pictures included for this sample is " + str(included) + "/100.\n")
+        for acc in accs:
+            file.write(str(acc) + "\n")
 
     #
     # # Read the data from the csv file
