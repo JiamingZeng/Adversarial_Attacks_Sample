@@ -134,7 +134,7 @@ if __name__ == '__main__':
             dir = line[21:23]
             if dir[1] == '/':
                 dir = dir[0]
-            if dir not in images:
+            if int(dir) not in images:
                 images[int(dir)] = [line]
             else:
                 images[int(dir)].append(line)
@@ -152,7 +152,7 @@ if __name__ == '__main__':
     accs = []
     suitable = []
     classified = []
-    for i in range(100):
+    for i in range(100, 200):
         acc = []
         suit = []
         fname = 'Datasets/GTSRB/Test/{:05d}.png'.format(i)
@@ -180,11 +180,11 @@ if __name__ == '__main__':
         min_score = list(min(acc, key = lambda x:x[2]))
         min_score.append(correct_class)
         classified.append(min_score)
-        print("This picture is classified as ", classified[i])
+        print("This picture is classified as ", classified[i - 100])
         accs.append(acc)
         suitable.append(suit)
 
-    with open('accuracy_result.txt', 'w') as file:
+    with open('accuracy_result_out.txt', 'w') as file:
         accuracy = 0
         included = 0
         for id, classify in enumerate(classified):
