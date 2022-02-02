@@ -12,6 +12,10 @@ import cv2
 from DISTS_pytorch import DISTS
 from swd import swd
 
+#prepare the device
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+model = DISTS().to(device)
+
 # Function to normalize the Image
 def normalize(img):
     # define custom transform function
@@ -212,77 +216,103 @@ def verify_result():
         for acc in accs:
             file.write(str(acc) + "\n")
 
+def find_min():
+    """Function for finding lowest class and compare"""
+    test_rows = []
+    with open('Datasets/GTSRB/Test.csv', 'r') as file:
+        csvreader = csv.reader(file)
+        header = next(csvreader)
+        for row in csvreader:
+            test_rows.append(row)
+
+    with open('accuracy_result_only.txt') as f:
+        lines = f.readlines()
+        lines = [line.rstrip() for line in lines]
+        line = lines[0]
+        count = 100
+        count2 = 0
+        for line in lines:
+            line = line.replace("[", "")
+            line = line.replace("]", "")
+            line = line.replace("(", "")
+            line = line.replace(")", "")
+            results = line.split(',')
+            correct_class = test_rows[int(results[0])][6]
+            i = 0
+            acc = []
+            for r in results:
+                if i % 3 == 2:
+                    acc.append(r)
+                i += 1
+            np_acc = np.array(acc).astype(float)
+            print("Mean for the " + str(count) + " image is " + str(np.mean(r, dtype=np.float64)) + " Correct image class is " +
+            correct_class + " Image score is " + str(acc[int(correct_class)]) + "\n")
+            if float(np.mean(r, dtype=np.float64)) > float(acc[int(correct_class)]):
+                count2 += 1
+            min = np.amin(np_acc)
+            res = int(np.where(np_acc == min)[0])
+            print("the lowest class is " + str(res) + " score is " + str(min))
+            count += 1
+        print(str(count2))
+
+    #prepare the device
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = DISTS().to(device)
+
+    root_dir = 'Datasets/GTSRB/Selected_Train/0'
+    filepath2 = 'Datasets/GTSRB/Test/00195.png'
+    x = np.empty([0, 3, 64, 64])
+    i = 0
+    for subdir, dirs, files in os.walk(root_dir):
+        for file in files:
+            if i > 150:
+                break
+            print(os.path.join(root_dir, file), str(i))
+            i += 1
+            x = np.append(x, img_resize_to_np(os.path.join(root_dir, file)), axis = 0)
+    x = torch.tensor(x, dtype=torch.float)
+    ref = x.to(device)
+    y = img_resize_to_np(filepath2)
+    y = torch.tensor(y, dtype=torch.float)
+    dist = y.to(device)
+    arr = model(ref, dist)
+    score = torch.mean(arr)
+    print(score, torch.max(arr), torch.min(arr))
+
 if __name__ == '__main__':
     # verify_result()
-    # test_rows = []
-    # with open('Datasets/GTSRB/Test.csv', 'r') as file:
-    #     csvreader = csv.reader(file)
-    #     header = next(csvreader)
-    #     for row in csvreader:
-    #         test_rows.append(row)
-    #
-    # with open('accuracy_result_only.txt') as f:
-    #     lines = f.readlines()
-    #     lines = [line.rstrip() for line in lines]
-    #     line = lines[0]
-    #     count = 100
-    #     count2 = 0
-    #     for line in lines:
-    #         line = line.replace("[", "")
-    #         line = line.replace("]", "")
-    #         line = line.replace("(", "")
-    #         line = line.replace(")", "")
-    #         results = line.split(',')
-    #         correct_class = test_rows[int(results[0])][6]
-    #         i = 0
-    #         acc = []
-    #         for r in results:
-    #             if i % 3 == 2:
-    #                 acc.append(r)
-    #             i += 1
-    #         np_acc = np.array(acc).astype(float)
-    #         print("Mean for the " + str(count) + " image is " + str(np.mean(r, dtype=np.float64)) + " Correct image class is " +
-    #         correct_class + " Image score is " + str(acc[int(correct_class)]) + "\n")
-    #         if float(np.mean(r, dtype=np.float64)) > float(acc[int(correct_class)]):
-    #             count2 += 1
-    #         min = np.amin(np_acc)
-    #         res = int(np.where(np_acc == min)[0])
-    #         print("the lowest class is " + str(res) + " score is " + str(min))
-    #         count += 1
-    #     print(str(count2))
+    root_dir = 'Datasets/GTSRB/Train'
+    for subdir, dirs, files in os.walk(root_dir):
+        for dir in dirs:
+            names = []
+            x = np.empty([0, 3, 64, 64])
+            dirpath = os.path.join(root_dir, dir)
+            # Randomly select 50 images as the sample iamges for comparing
+            filenames = random.sample(os.listdir(dirpath), 50)
+            for fname in filenames:
+                x = np.append(x, img_resize_to_np(os.path.join(dirpath, fname)), axis = 0)
 
-    # prepare the device
-    # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    # model = DISTS().to(device)
-    #
-    # root_dir = 'Datasets/GTSRB/Selected_Train/0'
-    # filepath2 = 'Datasets/GTSRB/Test/00195.png'
-    # x = np.empty([0, 3, 64, 64])
-    # i = 0
-    # for subdir, dirs, files in os.walk(root_dir):
-    #     for file in files:
-    #         if i > 150:
-    #             break
-    #         print(os.path.join(root_dir, file), str(i))
-    #         i += 1
-    #         x = np.append(x, img_resize_to_np(os.path.join(root_dir, file)), axis = 0)
-    # x = torch.tensor(x, dtype=torch.float)
-    # ref = x.to(device)
-    # y = img_resize_to_np(filepath2)
-    # y = torch.tensor(y, dtype=torch.float)
-    # dist = y.to(device)
-    # arr = model(ref, dist)
-    # score = torch.mean(arr)
-    # print(score, torch.max(arr), torch.min(arr))
+            tensor_x = torch.tensor(x, dtype=torch.float)
+            ref = tensor_x.to(device)
+            """Loop through the x and get the results by comparing each image to all of the others in the same class"""
+            fname = "Datasets/GTSRB/inclass_comparison/inclass_comparison_{}.txt".format(dir)
+            i = 0
+            with open(fname, 'w+') as file:
+                for finame in os.listdir(dirpath):
+                    y = img_resize_to_np(os.path.join(dirpath, finame))
+                    tensor_y = torch.tensor(y, dtype=torch.float)
+                    dist = tensor_y.to(device)
+                    arr = model(ref, dist)
+                    print("{} ".format(os.path.join(dirpath, finame)), i)
+                    file.write("{} ".format(os.path.join(dirpath, finame)))
+                    for element in arr:
+                        file.write("{} ".format(element))
+                    file.write("\n")
+                    i += 1
+            # score = torch.mean(arr)
+            # print("{} {}\n".format(score.item(), names[i]))
+            # file.write("{} {}\n".format(score.item(), names[i]))
 
-    filepath = 'Datasets/GTSRB/Test/00195.png'
-    sample = cv2.imread(filepath)
-    first = int(sample.shape[0] * 0.2)
-    second = int(sample.shape[1] * 0.2)
-    chg_img = sample[first:sample.shape[0] - first, second:sample.shape[1] - second]
-    cv2.imshow('image', chg_img)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
 
     #
     # # Read the data from the csv file
