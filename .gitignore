@@ -1,5 +1,6 @@
 env/
 Datasets/
+pytorch/
 
 # macOS system files\
 *.DS_Store\

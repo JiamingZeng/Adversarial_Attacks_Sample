@@ -119,24 +119,23 @@ if __name__ == '__main__':
                 X=scores_tensor, num_clusters=num_clusters, distance='euclidean'
             )
             cluster_ids_x = cluster_ids_x.numpy()
-            for i in range(num_clusters):
-                s = list(cluster_ids_x).count(i)
+            for k in range(num_clusters):
+                s = list(cluster_ids_x).count(k)
                 if s < 4:
                     flag = True
 
-        out_dir = 'Datasets/GTSRB/Selected_Train3/'.format(i)
-        # create the directory if not exist
-        if not os.path.exists(out_dir):
-            os.makedirs(out_dir)
+        for j in range(len(cluster_ids_x)):
+            out_dir = 'Datasets/GTSRB/Selected_Train3/{}_{}'.format(i, cluster_ids_x[j])
+                    # create the directory if not exist
+            if not os.path.exists(out_dir):
+                os.makedirs(out_dir)
+            # out_sub_dir = str(cluster_ids_x[i])
+            # out_dir_spec = os.path.join(out_dir, out_sub_dir)
+            #
+            # # create the directory if not exist
+            # if not os.path.exists(out_dir_spec):
+            #     os.makedirs(out_dir_spec)
 
-        for i in range(len(cluster_ids_x)):
-            out_sub_dir = str(cluster_ids_x[i])
-            out_dir_spec = os.path.join(out_dir, out_sub_dir)
-
-            # create the directory if not exist
-            if not os.path.exists(out_dir_spec):
-                os.makedirs(out_dir_spec)
-
-            input = files[i]
-            output_file_name = os.path.join(out_dir_spec, os.path.basename(input))
+            input = files[j]
+            output_file_name = os.path.join(out_dir, os.path.basename(input))
             copyfile(input, output_file_name)

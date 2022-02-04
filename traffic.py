@@ -59,7 +59,7 @@ def img_resize_to_np(img_path):
 
 # threshold calculation Function
 def calculate_threshold():
-    root_dir = 'Datasets/GTSRB/Selected_Train'
+    root_dir = 'Datasets/GTSRB/Selected_Train3'
     random.seed(10)
 
     test_rows = []
@@ -83,7 +83,7 @@ def calculate_threshold():
         for subdir, dirs, files in os.walk(root_dir):
             for dir in dirs:
                 # Generate x
-                x = np.empty([0, 3, 256, 256])
+                x = np.empty([0, 3, 64, 64])
 
                 dirpath = os.path.join(root_dir, dir)
                 # Randomly select 3 images as the sample iamges for comparing
@@ -98,8 +98,9 @@ def calculate_threshold():
                 x = torch.tensor(x, dtype=torch.float)
                 ref = x.to(device)
 
+                cat = dir.split('_')[0]
                 # filter the test signs
-                test_signs = filter(lambda c:int(c[6]) != int(dir), test_rows)
+                test_signs = filter(lambda c:int(c[6]) != int(cat), test_rows)
                 test_signs_ls = list(test_signs)
                 test_signs_list = [row[7] for row in test_signs_ls]
 
@@ -147,13 +148,13 @@ def verify_result():
         lines = file.readlines()
         for line in lines:
             line = line.strip()
-            dir = line[30:32]
-            if dir[1] == '/':
-                dir = dir[0]
-            if int(dir) not in images:
-                images[int(dir)] = [line]
+            dir = line[31:35]
+            if dir[3] == '/':
+                dir = dir[0:3]
+            if dir not in images:
+                images[dir] = [line]
             else:
-                images[int(dir)].append(line)
+                images[dir].append(line)
 
     test_rows = []
     with open('Datasets/GTSRB/Test.csv', 'r') as file:
@@ -174,10 +175,12 @@ def verify_result():
         fname = 'Datasets/GTSRB/Test/{:05d}.png'.format(i)
         correct_class = test_rows[i][6]
 
+        j = 0
         for key in sorted(images):
-            x = np.empty([0, 3, 256, 256])
+            x = np.empty([0, 3, 64, 64])
 
             # for loop through the each class of sample images
+            # key = 0_0
             for img_path in images[key]:
                 x = np.append(x, img_resize_to_np(img_path), axis = 0)
             x = torch.tensor(x, dtype=torch.float)
@@ -188,12 +191,18 @@ def verify_result():
             score = torch.mean(model(ref, dist))
 
             acc.append((i, key, score.item()))
-            print(acc[key])
-            if score < results[key][2]:
-                print(results[key], score)
+            print(acc[j])
+            # since the results and the images have been sorted the sequence should be the same
+            to_compare = results[results[0] == key]
+            if score < to_compare[2]:
+                print(to_compare, score)
                 suit.append(key)
+            j += 1
 
-        min_score = list(min(acc, key = lambda x:x[2]))
+        acc.sort(key = lambda x:x[2])
+        # min_score = list(min(acc, key = lambda x:x[2]))
+        min_score = acc[0:3]
+
         min_score.append(correct_class)
         classified.append(min_score)
         print("This picture is classified as ", classified[i - 100])
@@ -203,16 +212,32 @@ def verify_result():
     with open('accuracy_result_out.txt', 'w+') as file:
         accuracy = 0
         included = 0
-        for id, classify in enumerate(classified):
+        low_in = 0
+        for id, classes in enumerate(classified):
+            low = []
+            low.append(classes[0][1])
+            low.append(classes[1][1])
+            low.append(classes[2][1])
+            classify = list(classes[0])
+            classify[1] = classify[1][0:2]
+            if classify[1][1] == '_':
+                classify[1] = classify[1][0:1]
             file.write("The estimated class for image " + str(classify[0]) + " is " + str(classify[1]) + \
-            ". The correct images class is " + str(classify[3]) + "\n")
-            if int(classify[1]) == int(classify[3]):
+            ". The correct images class is " + str(classes[3]) + "\n")
+            if int(classify[1]) == int(classes[3]):
                 accuracy += 1
             file.write("The class below threshold includes " + str(suitable[id]) + "\n")
-            if int(classify[3]) in suitable[id]:
+            if int(classes[3]) in suitable[id]:
                 included += 1
+            file.write("Lowest Three is " + str(classes[0][1]) + " " + str(classes[1][1]) + \
+            " " + str(classes[2][1]) + "\n")
+            for i in range(3):
+                if classes[3] == classes[i][1][0:len(classes[3])]:
+                    low_in += 1
+                    break
         file.write("The accuracy for this sample is " + str(accuracy) + "/100.\n")
         file.write("Pictures included for this sample is " + str(included) + "/100.\n")
+        file.write("Pictures in the lowest three is  " + str(low_in) + "/100.\n")
         for acc in accs:
             file.write(str(acc) + "\n")
 
@@ -279,8 +304,7 @@ def find_min():
     score = torch.mean(arr)
     print(score, torch.max(arr), torch.min(arr))
 
-if __name__ == '__main__':
-    # verify_result()
+def calculate_inclass_comparison():
     root_dir = 'Datasets/GTSRB/Train'
     for subdir, dirs, files in os.walk(root_dir):
         for dir in dirs:
@@ -312,6 +336,9 @@ if __name__ == '__main__':
             # score = torch.mean(arr)
             # print("{} {}\n".format(score.item(), names[i]))
             # file.write("{} {}\n".format(score.item(), names[i]))
+
+if __name__ == '__main__':
+    verify_result()
 
 
     #
