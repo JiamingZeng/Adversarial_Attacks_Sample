@@ -1,7 +1,7 @@
 # python code to load and find the properties of certain image (traffic signs)
 
 # import necessary libraries
-from PIL import Image
+from PIL import Image, ImageOps, ImageChops
 import torchvision.transforms as transforms
 import matplotlib.pyplot as plt
 import numpy as np
@@ -39,19 +39,19 @@ def normalize(img):
     return transform_norm(img)
 
 # function to resize and convert images to tensor
-def img_resize_to_np(img_path):
+def img_resize_to_np(img):
     # convert to rgb
-    img = Image.open(img_path).convert('RGB')
+#    img = Image.open(img_path).convert('RGB')
 
     # resized Images
-    img = img.resize((64, 64))
+    img = img.resize((32, 32))
 
     # normalize
     img_normalized = normalize(img)
 
     # convert normalized image to numpy
     img_np = np.array(img_normalized)
-    img_np = img_np.reshape(3, 64, 64)
+    img_np = img_np.reshape(3, 32, 32)
     # return img_np.reshape(3, 256, 256)
 
     # Create a larger sample_case
@@ -78,6 +78,7 @@ def calculate_threshold():
     # save the train file
     train_file = []
 
+    num = 0
     # Walk through all the classes in the directories
     with open("results_full_100.txt", "w+") as f:
         for subdir, dirs, files in os.walk(root_dir):
@@ -119,7 +120,11 @@ def calculate_threshold():
                     res.append([dir, i, score.item()])
                     print([dir, i, score.item()])
                     f.write(str(dir) + " " + str(i) + " " + str(score.item()) + "\n")
-                results.append(min(res, key=lambda x:x[2]))
+                res.sort(key = lambda x:x[2])
+#                results.append(min(res, key=lambda x:x[2]))
+                results.append(res[10])
+                print(num)
+                num += 1
 
     results.sort(key=lambda x:int(x[0]))
     with open("results.txt", "w+") as f:
@@ -157,7 +162,12 @@ def verify_result():
                 images[dir].append(line)
 
     test_rows = []
-    with open('Datasets/GTSRB/Test.csv', 'r') as file:
+#    with open('Datasets/GTSRB/Test.csv', 'r') as file:
+#        csvreader = csv.reader(file)
+#        header = next(csvreader)
+#        for row in csvreader:
+#            test_rows.append(row)
+    with open('Datasets/Images/test.csv', 'r') as file:
         csvreader = csv.reader(file)
         header = next(csvreader)
         for row in csvreader:
@@ -169,15 +179,16 @@ def verify_result():
     accs = []
     suitable = []
     classified = []
-    for i in range(100, 200):
+    for i in range(0, 20):
         acc = []
         suit = []
         fname = 'Datasets/GTSRB/Test/{:05d}.png'.format(i)
-        correct_class = test_rows[i][6]
+        correct_class = test_rows[i][1]
 
         j = 0
+        print(i)
         for key in sorted(images):
-            x = np.empty([0, 3, 64, 64])
+            x = np.empty([0, 3, 32, 32])
 
             # for loop through the each class of sample images
             # key = 0_0
@@ -191,9 +202,11 @@ def verify_result():
             score = torch.mean(model(ref, dist))
 
             acc.append((i, key, score.item()))
-            print(acc[j])
+#            print(acc[j])
             # since the results and the images have been sorted the sequence should be the same
-            to_compare = results[results[0] == key]
+            for result in results:
+                if result[0] == key:
+                    to_compare = result
             if score < to_compare[2]:
                 print(to_compare, score)
                 suit.append(key)
@@ -201,11 +214,13 @@ def verify_result():
 
         acc.sort(key = lambda x:x[2])
         # min_score = list(min(acc, key = lambda x:x[2]))
-        min_score = acc[0:3]
+        # include the lowest fifteen scores
+        min_score = acc[0:30]
 
         min_score.append(correct_class)
         classified.append(min_score)
-        print("This picture is classified as ", classified[i - 100])
+        print("This picture is classified as ", classified[i][0:3])
+        print("correct", classified[i][30])
         accs.append(acc)
         suitable.append(suit)
 
@@ -213,7 +228,21 @@ def verify_result():
         accuracy = 0
         included = 0
         low_in = 0
+        count = 0
         for id, classes in enumerate(classified):
+            main_class = []
+            for i in range(30):
+                actual = classes[i][1][0:2]
+                if actual[1] == '_':
+                    actual = actual[0:1]
+                if actual not in main_class:
+                    count += 1
+                    main_class.append(actual)
+                if count > 10:
+                    break
+            print(main_class)
+            if classes[30] in main_class:
+                low_in += 1
             low = []
             low.append(classes[0][1])
             low.append(classes[1][1])
@@ -222,19 +251,37 @@ def verify_result():
             classify[1] = classify[1][0:2]
             if classify[1][1] == '_':
                 classify[1] = classify[1][0:1]
+                
+            # get the correct class
+            
             file.write("The estimated class for image " + str(classify[0]) + " is " + str(classify[1]) + \
-            ". The correct images class is " + str(classes[3]) + "\n")
-            if int(classify[1]) == int(classes[3]):
+            ". The correct images class is " + str(classes[30]) + "\n")
+            if int(classify[1]) == int(classes[30]):
                 accuracy += 1
             file.write("The class below threshold includes " + str(suitable[id]) + "\n")
-            if int(classes[3]) in suitable[id]:
-                included += 1
+            for key in suitable[id]:
+                print(key)
+                key = key[0:2]
+                
+#                suitable[id] = suitable[id][0:2]
+                if key[1] == '_':
+                    to_compare = key[0]
+                else:
+                    to_compare = key
+                if to_compare == classes[30]:
+                    included += 1
+                    break
+#            if int(classify[1]) in suitable[id]:
+#                included += 1
             file.write("Lowest Three is " + str(classes[0][1]) + " " + str(classes[1][1]) + \
             " " + str(classes[2][1]) + "\n")
-            for i in range(3):
-                if classes[3] == classes[i][1][0:len(classes[3])]:
-                    low_in += 1
-                    break
+            for key in main_class:
+                file.write(key + ", ");
+            file.write("\n");
+#            for i in range(15):
+#                if classes[30] == classes[i][1][0:len(classes[30])]:
+#                    low_in += 1
+#                    break
         file.write("The accuracy for this sample is " + str(accuracy) + "/100.\n")
         file.write("Pictures included for this sample is " + str(included) + "/100.\n")
         file.write("Pictures in the lowest three is  " + str(low_in) + "/100.\n")
@@ -254,10 +301,12 @@ def find_min():
         lines = f.readlines()
         lines = [line.rstrip() for line in lines]
         line = lines[0]
-        count = 100
-        count2 = 0
+        count = 0
         for line in lines:
+            count2 = 0
+            line = line.strip()
             line = line.replace("[", "")
+            line = line.replace("\'", "")
             line = line.replace("]", "")
             line = line.replace("(", "")
             line = line.replace(")", "")
@@ -265,44 +314,71 @@ def find_min():
             correct_class = test_rows[int(results[0])][6]
             i = 0
             acc = []
-            for r in results:
-                if i % 3 == 2:
-                    acc.append(r)
-                i += 1
-            np_acc = np.array(acc).astype(float)
-            print("Mean for the " + str(count) + " image is " + str(np.mean(r, dtype=np.float64)) + " Correct image class is " +
-            correct_class + " Image score is " + str(acc[int(correct_class)]) + "\n")
-            if float(np.mean(r, dtype=np.float64)) > float(acc[int(correct_class)]):
-                count2 += 1
-            min = np.amin(np_acc)
-            res = int(np.where(np_acc == min)[0])
-            print("the lowest class is " + str(res) + " score is " + str(min))
-            count += 1
-        print(str(count2))
-
-    #prepare the device
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = DISTS().to(device)
-
-    root_dir = 'Datasets/GTSRB/Selected_Train/0'
-    filepath2 = 'Datasets/GTSRB/Test/00195.png'
-    x = np.empty([0, 3, 64, 64])
-    i = 0
-    for subdir, dirs, files in os.walk(root_dir):
-        for file in files:
-            if i > 150:
+            if count2 > 0:
                 break
-            print(os.path.join(root_dir, file), str(i))
-            i += 1
-            x = np.append(x, img_resize_to_np(os.path.join(root_dir, file)), axis = 0)
-    x = torch.tensor(x, dtype=torch.float)
-    ref = x.to(device)
-    y = img_resize_to_np(filepath2)
-    y = torch.tensor(y, dtype=torch.float)
-    dist = y.to(device)
-    arr = model(ref, dist)
-    score = torch.mean(arr)
-    print(score, torch.max(arr), torch.min(arr))
+            count2 += 1
+            # store the category and score for comparing
+            small = []
+            for r in results:
+                if i % 3 == 1:
+                    r = r.strip()
+                    r = r[0:2]
+                    if r[1] == '_':
+                        r = r[0]
+                    small.append(r)
+                if i % 3 == 2:
+                    small.append(float(r))
+                    acc.append(small)
+                    small = []
+                i += 1
+#            np_acc = np.array(acc).astype(float)
+            acc.sort(key = lambda x:x[1])
+            
+            # count if the lowest 10 classes include the correct class
+            category = []
+            count2 = 0
+            for a in acc:
+                if count2 > 10:
+                    break
+                if a[0] not in category:
+                    category.append(a[0])
+                    count2 += 1
+            if correct_class in category:
+                count += 1
+        print(count)
+#            print("Mean for the " + str(count) + " image is " + str(np.mean(r, dtype=np.float64)) + " Correct image class is " +
+#            correct_class + " Image score is " + str(acc[int(correct_class)]) + "\n")
+#            if float(np.mean(r, dtype=np.float64)) > float(acc[int(correct_class)]):
+#                count2 += 1
+#            min = np.amin(np_acc)
+#            res = int(np.where(np_acc == min)[0])
+#            print("the lowest class is " + str(res) + " score is " + str(min))
+#            count += 1
+#        print(str(count2))
+#
+#    #prepare the device
+#    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+#    model = DISTS().to(device)
+#
+#    root_dir = 'Datasets/GTSRB/Selected_Train/0'
+#    filepath2 = 'Datasets/GTSRB/Test/00195.png'
+#    x = np.empty([0, 3, 64, 64])
+#    i = 0
+#    for subdir, dirs, files in os.walk(root_dir):
+#        for file in files:
+#            if i > 150:
+#                break
+#            print(os.path.join(root_dir, file), str(i))
+#            i += 1
+#            x = np.append(x, img_resize_to_np(os.path.join(root_dir, file)), axis = 0)
+#    x = torch.tensor(x, dtype=torch.float)
+#    ref = x.to(device)
+#    y = img_resize_to_np(filepath2)
+#    y = torch.tensor(y, dtype=torch.float)
+#    dist = y.to(device)
+#    arr = model(ref, dist)
+#    score = torch.mean(arr)
+#    print(score, torch.max(arr), torch.min(arr))
 
 def calculate_inclass_comparison():
     root_dir = 'Datasets/GTSRB/Train'
@@ -336,9 +412,22 @@ def calculate_inclass_comparison():
             # score = torch.mean(arr)
             # print("{} {}\n".format(score.item(), names[i]))
             # file.write("{} {}\n".format(score.item(), names[i]))
-
+def shift_image():
+    model = DISTS()
+    img_path = 'Datasets/GTSRB/Train/0/00000_00000_00000.png'
+    img_path2 = 'Datasets/GTSRB/Train/0/00000_00000_00029.png'
+    x = Image.open(img_path).convert('RGB')
+    y = Image.open(img_path2).convert('RGB')
+#    y = ImageChops.offset(y, 10, 0)
+    x = torch.tensor(img_resize_to_np(x), dtype=torch.float)
+    y = torch.tensor(img_resize_to_np(y), dtype=torch.float)
+    print(model(x, y))
+    
 if __name__ == '__main__':
-    verify_result()
+#    calculate_threshold()
+#    verify_result()
+#    find_min()
+    shift_image()
 
 
     #

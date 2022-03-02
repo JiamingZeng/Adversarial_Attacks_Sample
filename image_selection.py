@@ -114,14 +114,14 @@ if __name__ == '__main__':
         flag = True
         while flag:
             flag = False
-            num_clusters = 5
+            num_clusters = 8
             cluster_ids_x, cluster_centers = kmeans(
                 X=scores_tensor, num_clusters=num_clusters, distance='euclidean'
             )
             cluster_ids_x = cluster_ids_x.numpy()
             for k in range(num_clusters):
                 s = list(cluster_ids_x).count(k)
-                if s < 4:
+                if s < 10:
                     flag = True
 
         for j in range(len(cluster_ids_x)):

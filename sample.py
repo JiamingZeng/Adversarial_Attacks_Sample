@@ -5,41 +5,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from pathlib import Path
 import matplotlib.pyplot as plt
-
-# Set up all the paramters for the model
-# Total num of rounds of training
-n_epochs = 3
-# Num of reads in one training
-batch_size_train = 64
-batch_size_test = 1000
-# How fast the gradient change with the back-propogation
-learning_rate = 0.01
-# It changes the weight increment with momentum times last time's weight increment
-# improve the speed and accuracy of the model
-momentum = 0.5
-log_interval = 10
-
-random_seed = 1
-torch.backends.cudnn.enabled = False
-torch.manual_seed(random_seed)
-p = Path('/Users/jiamingzeng/Documents/UM/EECS/research/')
-
-
-# Set up the transformation
-transform = torchvision.transforms.Compose([
-  torchvision.transforms.ToTensor(),
-  torchvision.transforms.Normalize(
-    (0.1307,), (0.3081,))
-])
-
-# Load the training and testing data
-train_loader = torch.utils.data.DataLoader(
-  torchvision.datasets.MNIST(p / "files", train=True, download=True,
-                             transform=transform), batch_size=batch_size_train, shuffle=True)
-
-test_loader = torch.utils.data.DataLoader(
-  torchvision.datasets.MNIST(p / "files", train=False, download=True,
-                             transform=transform), batch_size=batch_size_test, shuffle=True)
+import gtsrb_dataset as dataset
 
 # Define what device we are using
 # print("CUDA Available: ",torch.cuda.is_available())
@@ -74,15 +40,11 @@ class Net(nn.Module):
         # Normalize the logistic function of 10 dimension to probability distribution over predicted class
         return F.log_softmax(x)
 
-network = Net()
-optimizer = optim.SGD(network.parameters(), lr=learning_rate,
-                      momentum=momentum)
-
-# Training starts
-train_losses = []
-train_counter = []
-test_losses = []
-test_counter = [i*len(train_loader.dataset) for i in range(n_epochs + 1)]
+## Training starts
+#train_losses = []
+#train_counter = []
+#test_losses = []
+#test_counter = [i*len(train_loader.dataset) for i in range(n_epochs + 1)]
 
 def train(epoch):
   network.train()
@@ -131,10 +93,8 @@ def test():
     test_loss, correct, len(test_loader.dataset),
     100. * correct / len(test_loader.dataset)))
 
-test()
-for epoch in range(1, n_epochs + 1):
-  train(epoch)
-  test()
+#test()
+
 
 # fig = plt.figure()
 # plt.plot(train_counter, train_losses, color='blue')
@@ -190,11 +150,142 @@ def attack_test(eps):
 # plt.imshow(attacked_data[0][0], cmap='gray', interpolation='none')
 # plt.show()
 
-# Testing the program with different epsilons
-epsilons = [0, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5]
-accuracies = []
-for eps in epsilons:
-    acc= attack_test(eps)
-    accuracies.append(acc)
-plt.plot(epsilons, accuracies, "*-")
-plt.show()
+## Testing the program with different epsilons
+#epsilons = [0, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5]
+#accuracies = []
+#for eps in epsilons:
+#    acc= attack_test(eps)
+#    accuracies.append(acc)
+#plt.plot(epsilons, accuracies, "*-")
+#plt.show()
+
+def pgd(model, x, y, step_size=0.007, epsilon=0.031,
+            num_steps=10, random_start = True):
+    model.eval()
+
+    if random_start:
+        perturb = torch.FloatTensor(*x.shape).uniform_(-epsilon, epsilon).to(x.device)
+        x_adv = x.clone() + perturb
+        x_adv = torch.clamp(x_adv, 0.0, 1.0)
+    else:
+        x_adv = x.clone()
+
+    x_adv.requires_grad_()
+    batch_size = len(x)
+
+    ce_loss = nn.CrossEntropyLoss()
+
+    for i in range(num_steps):
+        x_adv.requires_grad_()
+
+        with torch.enable_grad():
+            loss = ce_loss(model(x_adv), y)
+
+        grad = torch.autograd.grad(loss, x_adv)[0]
+
+        x_adv = x_adv.detach() + step_size * grad.sign()
+        x_adv = torch.min(torch.max(x_adv, x - epsilon),
+                          x + epsilon)
+        x_adv = torch.clamp(x_adv, 0.0, 1.0)
+    save_image(x_adv, 'Datasets/GTSRB_2/1.ppm')
+    return x_adv
+
+
+if __name__ == '__main__':
+    # Set up all the paramters for the model
+    # Total num of rounds of training
+    n_epochs = 2
+    # Num of reads in one training
+    batch_size_train = 64
+    batch_size_test = 1000
+    # How fast the gradient change with the back-propogation
+    learning_rate = 0.01
+    # It changes the weight increment with momentum times last time's weight increment
+    # improve the speed and accuracy of the model
+    momentum = 0.5
+    log_interval = 10
+
+    random_seed = 1
+    torch.backends.cudnn.enabled = False
+    torch.manual_seed(random_seed)
+    p = Path('/Users/jiamingzeng/Documents/UM/EECS/research/Datasets/GTSRB_2')
+
+    network = Net()
+    optimizer = optim.SGD(network.parameters(), lr=learning_rate,
+                      momentum=momentum)
+                      
+    # Create Transforms
+    transform = torchvision.transforms.Compose([
+        torchvision.transforms.Resize((32, 32)),
+        torchvision.transforms.ToTensor(),
+        torchvision.transforms.Normalize((0.3403, 0.3121, 0.3214),
+                             (0.2724, 0.2608, 0.2669))
+    ])
+    
+    # Create Datasets
+    trainset = dataset.GTSRB(
+        root_dir='', train=True, transform=torchvision.transforms)
+    testset = dataset.GTSRB(
+        root_dir='', train=False, transform=torchvision.transforms)
+
+    # Load Datasets
+    train_loader = torch.utils.data.DataLoader(
+        trainset, batch_size=128, shuffle=True)
+    test_loader = torch.utils.data.DataLoader(
+        testset, batch_size=64, shuffle=False)
+#    # Set up the transformation
+#    transform = torchvision.transforms.Compose([
+#        torchvision.transforms.ToTensor(),
+#        torchvision.transforms.Normalize(
+#        (0.1307,), (0.3081,))
+#    ])
+
+#    # Load the training and testing data
+#    train_loader = torch.utils.data.DataLoader(
+#        torchvision.datasets.MNIST(p / "files", train=True, download=True,
+#                             transform=transform), batch_size=batch_size_train, shuffle=True)
+#
+#    test_loader = torch.utils.data.DataLoader(
+#        torchvision.datasets.MNIST(p / "files", train=False, download=True,
+#                             transform=transform), batch_size=batch_size_test, shuffle=True)
+
+    train_features, train_labels = next(iter(train_loader))
+    print(f"Feature batch shape: {train_features.size()}")
+    print(f"Labels batch shape: {train_labels.size()}")
+    img = train_features[0].squeeze()
+    
+
+#
+#    for epoch in range(1, n_epochs + 1):
+#        network.train()
+#        for batch_idx, (data, target) in enumerate(train_loader):
+#            # Need to set gradient to zero because pytorch accumulate gradient
+#            optimizer.zero_grad()
+#
+#            # Compute the output of data
+#            output = network(data)
+#
+#            # the loss is calculated using negative log-likelihood loss
+#            loss = F.nll_loss(output, target)
+#
+#            # Feed back into the model to improve the weights and bias
+#            loss.backward()
+#            optimizer.step()
+#
+#        # Every ten times record
+#        if batch_idx % log_interval == 0:
+#          print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+#            epoch, batch_idx * len(data), len(train_loader.dataset),
+#            100. * batch_idx / len(train_loader), loss.item()))
+#          train_losses.append(loss.item())
+#          train_counter.append(
+#            (batch_idx*64) + ((epoch-1)*len(train_loader.dataset)))
+#          torch.save(network.state_dict(), p /"results"/"model.pth")
+#          torch.save(optimizer.state_dict(), p /"results"/"optimizer.pth")
+#    count = 0
+#    for data, target in test_loader:
+#        if count > 10:
+#            break
+#        pgd(network, data, target)
+#        count += 1
+#
